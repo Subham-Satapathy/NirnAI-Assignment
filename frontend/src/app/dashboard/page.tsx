@@ -74,6 +74,8 @@ export default function DashboardPage() {
               onLoadingChange={handleLoadingChange}
             />
           </div>
-        </main>
-      </div>
-    </>
+            </main>
+          </div>
+        </>
+      );
+    }
