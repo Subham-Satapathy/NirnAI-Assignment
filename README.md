@@ -4,15 +4,20 @@ A full-stack solution for extracting, translating, and managing Tamil real-estat
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start - Choose Your Setup Method
 
-### Option 1: With Docker (Recommended - 5 Minutes)
+**🐳 Have Docker?** → Use Option 1 (5 minutes, fully automated)  
+**💻 No Docker?** → Use Option 2 (15 minutes, manual setup)
 
-#### Prerequisites
+---
+
+## Option 1: With Docker (Recommended - 5 Minutes)
+
+### Prerequisites
 - **Docker Desktop** ([Download](https://docs.docker.com/get-docker/))
 - **OpenAI API Key** ([Get one](https://platform.openai.com/api-keys))
 
-#### Setup (One Command)
+### Setup (One Command)
 
 ```bash
 git clone <repository-url>
@@ -27,12 +32,12 @@ make setup
 4. Start all services
 5. Initialize database
 
-#### Access Application
+### Access Application
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:3001
 - **Login**: `admin` / `admin123`
 
-#### Available Commands
+### Available Commands
 
 ```bash
 make setup          # One-click setup (first time)
@@ -49,7 +54,16 @@ make help           # Show all commands
 
 ---
 
-### Option 2: Without Docker (Manual Setup - 15 Minutes)
+## Option 2: Without Docker (Manual Setup - 15 Minutes)
+
+**Quick Start with Script:**
+```bash
+git clone <repository-url>
+cd NirnAI
+./setup-manual.sh
+```
+
+**Or follow manual steps below:**
 
 #### Prerequisites
 - **Node.js 20+** ([Download](https://nodejs.org/))
@@ -512,9 +526,14 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 5. Click "Upload & Extract"
 
 ### 2. View Processing
+
+**With Docker:**
 ```bash
 make logs-backend  # Watch AI extraction in real-time
 ```
+
+**Without Docker:**
+Check the terminal where you ran `npm run start:dev`
 
 ### 3. Check Results
 - View transactions in Excel-like table
@@ -525,6 +544,84 @@ make logs-backend  # Watch AI extraction in real-time
 ### 4. Test Caching
 - Upload same PDF again
 - Notice instant results (<1 second)
+
+---
+
+## ❓ Troubleshooting
+
+### Docker Setup Issues
+
+| Issue | Solution |
+|-------|----------|
+| Docker not running | Start Docker Desktop |
+| Port 3000 in use | Run `make clean` then `make setup` |
+| Database migration failed | Run `make db-init` |
+| OpenAI API error | Check API key in `.env` and account credits |
+| Redis connection failed | Run `docker-compose restart redis` |
+| Backend not responding | Run `make logs-backend` to check errors |
+
+### Manual Setup Issues
+
+| Issue | Solution |
+|-------|----------|
+| PostgreSQL not found | Install: `brew install postgresql@15` (Mac) or `sudo apt install postgresql` (Linux) |
+| PostgreSQL not starting | Mac: `brew services start postgresql@15`<br>Linux: `sudo systemctl start postgresql` |
+| Database access denied | Run: `psql -U postgres` then create user manually |
+| Redis not found | Install: `brew install redis` (Mac) or `sudo apt install redis-server` (Linux) |
+| Redis not running | Mac: `brew services start redis`<br>Linux: `sudo systemctl start redis-server` |
+| Port 3000 already in use | Kill process: `lsof -ti:3000 \| xargs kill -9` |
+| Port 3001 already in use | Kill process: `lsof -ti:3001 \| xargs kill -9` |
+| npm install fails | Clear cache: `npm cache clean --force` then retry |
+| Backend won't start | Check logs in terminal, ensure PostgreSQL and Redis are running |
+| Frontend build error | Delete `node_modules` and `.next`, run `npm install` again |
+| Database migration error | Ensure database exists: `psql -U postgres -l \| grep nirnai_db` |
+
+### Connection Issues
+
+**Backend can't connect to PostgreSQL:**
+```bash
+# Check if PostgreSQL is running
+psql -U postgres -c "SELECT 1;"
+
+# Verify database exists
+psql -U postgres -l | grep nirnai_db
+
+# Test connection with credentials
+psql -U nirnai_user -d nirnai_db -c "SELECT 1;"
+```
+
+**Backend can't connect to Redis:**
+```bash
+# Check if Redis is running
+redis-cli ping  # Should return PONG
+
+# Check Redis connection
+redis-cli
+> INFO
+> quit
+```
+
+**Frontend can't connect to Backend:**
+```bash
+# Check backend is running
+curl http://localhost:3001
+
+# Check NEXT_PUBLIC_API_URL in .env
+cat .env | grep NEXT_PUBLIC_API_URL
+
+# Restart frontend after changing .env
+cd frontend
+npm run dev
+```
+
+### OpenAI API Issues
+
+| Issue | Solution |
+|-------|----------|
+| "Invalid API Key" | Verify key in `.env` starts with `sk-proj-` or `sk-` |
+| "Rate limit exceeded" | Wait a few minutes, or upgrade OpenAI plan |
+| "Insufficient quota" | Add credits to OpenAI account |
+| "Model not found" | Check OpenAI account has access to GPT-4o-mini |
 
 ---
 

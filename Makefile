@@ -13,8 +13,11 @@ NC := \033[0m # No Color
 help: ## Show this help message
 	@echo "$(CYAN)NirnAI - One-Click Deployment$(NC)"
 	@echo ""
-	@echo "$(GREEN)Available commands:$(NC)"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo "$(GREEN)Docker Commands:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -v "manual" | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(GREEN)Manual Setup (No Docker):$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep "manual" | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-15s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 
 check-env: ## Check if .env file exists
@@ -143,3 +146,38 @@ quick-start: ## Quick start (use existing build)
 	@echo "$(GREEN)[SUCCESS] Services started!$(NC)"
 	@echo "  Frontend: http://localhost:3000"
 	@echo "  Backend:  http://localhost:3001"
+
+setup-manual: check-env ## [manual] Setup without Docker
+	@echo "$(CYAN)[MANUAL SETUP] Starting manual installation...$(NC)"
+	@chmod +x setup-manual.sh
+	@./setup-manual.sh
+
+dev-backend: ## [manual] Start backend in development mode
+	@echo "$(GREEN)[BACKEND] Starting backend server...$(NC)"
+	@cd backend && npm run start:dev
+
+dev-frontend: ## [manual] Start frontend in development mode
+	@echo "$(GREEN)[FRONTEND] Starting frontend server...$(NC)"
+	@cd frontend && npm run dev
+
+install-manual: ## [manual] Install all dependencies manually
+	@echo "$(YELLOW)[INSTALL] Installing backend dependencies...$(NC)"
+	@cd backend && npm install
+	@echo "$(YELLOW)[INSTALL] Installing frontend dependencies...$(NC)"
+	@cd frontend && npm install
+	@echo "$(GREEN)[SUCCESS] All dependencies installed!$(NC)"
+
+db-setup-manual: ## [manual] Setup PostgreSQL database manually
+	@echo "$(YELLOW)[DATABASE] Setting up PostgreSQL...$(NC)"
+	@psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'nirnai_db'" | grep -q 1 || \
+	psql -U postgres -c "CREATE DATABASE nirnai_db;"
+	@psql -U postgres -c "CREATE USER nirnai_user WITH PASSWORD 'nirnai_password';" || true
+	@psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE nirnai_db TO nirnai_user;"
+	@psql -U postgres -c "ALTER DATABASE nirnai_db OWNER TO nirnai_user;"
+	@echo "$(GREEN)[SUCCESS] Database configured!$(NC)"
+
+db-migrate-manual: ## [manual] Run database migrations
+	@echo "$(YELLOW)[DATABASE] Running migrations...$(NC)"
+	@cd backend && npm run db:migrate
+	@echo "$(GREEN)[SUCCESS] Database migrated!$(NC)"
+
