@@ -154,24 +154,38 @@ export class OpenAIExtractionService {
     }
     
     console.log(`[TOKENS] Total tokens used: ~${totalTokensUsed}`);
+    console.log(`[RESULT] Raw transactions extracted: ${allTransactions.length}`);
     
-    // Remove duplicates based on documentNumber
+    // Remove duplicates based on documentNumber, surveyNumber, and names
     const uniqueTransactions = this.removeDuplicates(allTransactions);
-    console.log(`[RESULT] Total transactions after deduplication: ${uniqueTransactions.length}`);
+    console.log(`[RESULT] Unique transactions after deduplication: ${uniqueTransactions.length}`);
     
     return uniqueTransactions;
   }
 
   private removeDuplicates(transactions: ExtractedTransaction[]): ExtractedTransaction[] {
-    const seen = new Set<string>();
-    return transactions.filter(t => {
-      const key = `${t.documentNumber}-${t.surveyNumber}`;
+    const seen = new Map<string, ExtractedTransaction>();
+    const duplicates: string[] = [];
+    
+    for (const transaction of transactions) {
+      // Create more robust key with multiple fields
+      const key = `${transaction.documentNumber}-${transaction.surveyNumber}-${transaction.buyerName || ''}-${transaction.sellerName || ''}`
+        .toLowerCase()
+        .replace(/\s+/g, '');
+      
       if (seen.has(key)) {
-        return false;
+        duplicates.push(`Doc: ${transaction.documentNumber}, Survey: ${transaction.surveyNumber}`);
+      } else {
+        seen.set(key, transaction);
       }
-      seen.add(key);
-      return true;
-    });
+    }
+    
+    if (duplicates.length > 0) {
+      console.log(`[DEDUP] Removed ${duplicates.length} duplicate transactions`);
+      console.log(`[DEDUP] Duplicates:`, duplicates.slice(0, 5).join('; ') + (duplicates.length > 5 ? '...' : ''));
+    }
+    
+    return Array.from(seen.values());
   }
 
   private async extractTransactionsFromTextWithRetry(
@@ -243,7 +257,7 @@ JSON:`;
         messages: [
           {
             role: 'system',
-            content: 'You are an expert at extracting structured data from Tamil Nadu property documents. CRITICAL: Always transliterate Tamil names to English using proper Tamil transliteration rules. NEVER output Tamil script in the JSON. Always identify BOTH buyer (வாங்குபவர்) and seller (விற்பவர்) names. Return only valid JSON array.',
+            content: 'You are an expert at extracting structured data from Tamil Nadu property documents. CRITICAL: Always transliterate Tamil names to English using proper Tamil transliteration rules. NEVER output Tamil script in the JSON. Always identify BOTH buyer (வாங்குபவர்) and seller (விற்பவர்) names. Extract EVERY transaction, do not skip any. Return only valid JSON array.',
           },
           {
             role: 'user',
@@ -251,7 +265,8 @@ JSON:`;
           },
         ],
         temperature: 0,
-        max_tokens: 8000, // Reduced for efficiency
+        seed: 12345, // Deterministic seed for consistent outputs
+        max_tokens: 8000,
       });
 
       const content = response.choices[0]?.message?.content;
