@@ -25,23 +25,26 @@ export class PdfParserService {
     private readonly cacheService: CacheService,
   ) {}
 
-  async parsePdf(buffer: Buffer, fileName: string = 'document.pdf'): Promise<ExtractedTransaction[]> {
+  async parsePdf(buffer: Buffer, fileName: string = 'document.pdf'): Promise<{ transactions: ExtractedTransaction[], totalPages: number }> {
     try {
-      // Check cache first
+      // Parse PDF first to get page count
+      console.log('[PDF PARSE] Parsing PDF buffer of size:', buffer.length, 'bytes');
+      const data = await pdfParse(buffer);
+      const text = data.text;
+      const totalPages = data.numpages;
+      
+      console.log('[PDF] Extracted text length:', text.length, 'characters');
+      console.log('[PDF] First 500 characters of PDF:', text.substring(0, 500));
+      console.log('[PDF] Number of pages:', totalPages);
+
+      // Check cache after parsing (so we always get page count)
       const fileHash = this.cacheService.generateHash(buffer);
       const cachedResults = await this.cacheService.get(fileHash);
       
       if (cachedResults) {
-        return cachedResults;
+        console.log('[CACHE] Returning cached results');
+        return { transactions: cachedResults, totalPages };
       }
-
-      console.log('[PDF PARSE] Parsing PDF buffer of size:', buffer.length, 'bytes');
-      const data = await pdfParse(buffer);
-      const text = data.text;
-      
-      console.log('[PDF] Extracted text length:', text.length, 'characters');
-      console.log('[PDF] First 500 characters of PDF:', text.substring(0, 500));
-      console.log('[PDF] Number of pages:', data.numpages);
 
       // If OpenAI is configured, use it for extraction
       if (this.openaiService.isConfigured()) {
@@ -54,7 +57,7 @@ export class PdfParserService {
           // Cache the results
           await this.cacheService.set(fileHash, transactions, fileName);
           
-          return transactions;
+          return { transactions, totalPages };
         } catch (error) {
           console.error('[ERROR] OpenAI extraction failed, falling back to regex:', error.message);
           // Fall back to regex extraction
@@ -77,7 +80,7 @@ export class PdfParserService {
       const transactions = this.extractTransactions(text);
       console.log(`Regex extracted ${transactions.length} transactions`);
       
-      return transactions;
+      return { transactions, totalPages };
     } catch (error) {
       throw new Error(`Failed to parse PDF: ${error.message}`);
     }
@@ -116,10 +119,11 @@ export class PdfParserService {
         currentTransaction.surveyNumber = surveyMatch[1];
       }
       
-      // Look for buyer/seller patterns
-      if (line.match(/(?:Buyer|வாங்குபவர்|Purchaser)/i)) {
+      // Look for buyer/seller patterns with enhanced detection
+      // Enhanced patterns to catch more variations
+      if (line.match(/(?:Buyer|வாங்குபவர்|Purchaser|Second Party|Party of the Second Part)/i)) {
         const nextLine = lines[i + 1];
-        if (nextLine) {
+        if (nextLine && !nextLine.match(/(?:Document|Survey|Date|Value|Rs)/i)) {
           if (this.isTamil(nextLine)) {
             currentTransaction.buyerNameTamil = nextLine;
           } else {
@@ -128,15 +132,23 @@ export class PdfParserService {
         }
       }
       
-      if (line.match(/(?:Seller|விற்பவர்|Vendor)/i)) {
+      // Enhanced seller detection with multiple patterns
+      if (line.match(/(?:Seller|விற்பவர்|Vendor|First Party|Party of the First Part|Executant)/i)) {
         const nextLine = lines[i + 1];
-        if (nextLine) {
+        if (nextLine && !nextLine.match(/(?:Document|Survey|Date|Value|Rs)/i)) {
           if (this.isTamil(nextLine)) {
             currentTransaction.sellerNameTamil = nextLine;
           } else {
             currentTransaction.sellerName = nextLine;
           }
         }
+      }
+      
+      // If we see a pattern like "Name1 to Name2" or "Name1 S/o ... to Name2"
+      const transferMatch = line.match(/^([A-Za-z\s\.]+)\s+(?:to|transfers?|sells?)\s+([A-Za-z\s\.]+)$/i);
+      if (transferMatch && !currentTransaction.sellerName) {
+        currentTransaction.sellerName = transferMatch[1].trim();
+        currentTransaction.buyerName = transferMatch[2].trim();
       }
       
       // Look for house numbers

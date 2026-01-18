@@ -24,6 +24,20 @@ export interface UploadResponse {
   totalExtracted?: number;
   totalFiltered?: number;
   totalInserted?: number;
+  totalPages?: number;
+  dataQuality?: {
+    quality: 'excellent' | 'good' | 'fair' | 'poor';
+    completeness: number;
+    total: number;
+    complete: number;
+    incomplete: number;
+    warnings?: string[];
+    details?: {
+      missingSeller: number;
+      missingValue: number;
+      missingLocation: number;
+    };
+  };
 }
 
 export interface TransactionFilters {

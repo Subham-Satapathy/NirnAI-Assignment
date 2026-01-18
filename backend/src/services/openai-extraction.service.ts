@@ -166,19 +166,26 @@ export class OpenAIExtractionService {
   }
 
   private async extractTransactionsFromText(pdfText: string): Promise<ExtractedTransaction[]> {
-    // Optimized prompt - reduced tokens while maintaining accuracy
-    const prompt = `Extract Tamil Nadu property transactions as JSON array.
+    // Enhanced prompt for better seller extraction and Tamil document handling
+    const prompt = `Extract Tamil Nadu property sale deed transactions as JSON array.
 
-Required fields: surveyNumber, documentNumber
+IMPORTANT - Field Identification:
+- BUYER/PURCHASER: வாங்குபவர் / Purchaser / Buyer / Second Party
+- SELLER/VENDOR: விற்பவர் / Vendor / Seller / First Party  
+- If uncertain, check document flow: Seller → Buyer (property transfer direction)
+
+Required: surveyNumber, documentNumber
 Optional: buyerName, buyerNameTamil, sellerName, sellerNameTamil, houseNumber, transactionDate (DD/MM/YYYY), transactionValue (numbers only), district, village, additionalInfo
 
 Rules:
-1. Transliterate Tamil→English
-2. Extract ALL transactions
-3. Skip if missing surveyNumber/documentNumber
-4. Return valid JSON only
+1. ALWAYS try to identify BOTH seller and buyer names
+2. Look for Tamil labels: விற்பவர் (seller), வாங்குபவர் (buyer)
+3. Extract seller name even if not explicitly labeled
+4. Transliterate Tamil names to English
+5. If value/district/village missing, still extract other fields
+6. Return valid JSON only
 
-Example: [{"surveyNumber":"123/4","documentNumber":"2023-001","buyerName":"Rajesh Kumar","transactionDate":"15/03/2023"}]
+Example: [{"surveyNumber":"329","documentNumber":"200/2013","buyerName":"Nithya","sellerName":"Murugan","transactionValue":"314068","district":"Thiruvennainallur"}]
 
 Text:
 ${pdfText}
@@ -191,7 +198,7 @@ JSON:`;
         messages: [
           {
             role: 'system',
-            content: 'Extract real estate data. Return only valid JSON array, no markdown.',
+            content: 'You are an expert at extracting structured data from Tamil Nadu property sale deed documents. You understand both Tamil and English text. CRITICAL: Always identify BOTH buyer (வாங்குபவர்) and seller (விற்பவர்) names. Return only valid JSON array, no markdown.',
           },
           {
             role: 'user',
@@ -218,12 +225,52 @@ JSON:`;
         throw new Error('OpenAI response is not an array');
       }
 
-      return transactions.filter(
+      const validTransactions = transactions.filter(
         (t: any) => t.surveyNumber && t.documentNumber
       );
+
+      // Validate and warn about data quality
+      this.validateExtractionQuality(validTransactions);
+
+      return validTransactions;
     } catch (error) {
       console.error('OpenAI extraction error:', error);
       throw new Error(`Failed to extract transactions with OpenAI: ${error.message}`);
+    }
+  }
+
+  private validateExtractionQuality(transactions: ExtractedTransaction[]): void {
+    if (transactions.length === 0) return;
+
+    const missingSeller = transactions.filter(t => !t.sellerName || t.sellerName === 'Unknown').length;
+    const missingValue = transactions.filter(t => !t.transactionValue).length;
+    const missingLocation = transactions.filter(t => !t.district || !t.village).length;
+
+    const total = transactions.length;
+    const missingSellerPct = Math.round((missingSeller / total) * 100);
+    const missingValuePct = Math.round((missingValue / total) * 100);
+    const missingLocationPct = Math.round((missingLocation / total) * 100);
+
+    console.log('[VALIDATION] Data Quality Check:');
+    console.log(`[VALIDATION] Total Transactions: ${total}`);
+    
+    if (missingSeller > 0) {
+      console.warn(`[WARNING] Missing Seller Names: ${missingSeller}/${total} (${missingSellerPct}%)`);
+    }
+    if (missingValue > 0) {
+      console.warn(`[WARNING] Missing Transaction Values: ${missingValue}/${total} (${missingValuePct}%)`);
+    }
+    if (missingLocation > 0) {
+      console.warn(`[WARNING] Missing Location Data: ${missingLocation}/${total} (${missingLocationPct}%)`);
+    }
+
+    if (missingSellerPct < 10 && missingValuePct < 10 && missingLocationPct < 10) {
+      console.log('[VALIDATION] ✓ Data quality is good (>90% complete)');
+    } else if (missingSellerPct > 50 || missingValuePct > 20) {
+      console.warn('[WARNING] ⚠️  Data quality is poor. Consider:');
+      console.warn('[WARNING]    - Checking PDF format and structure');
+      console.warn('[WARNING]    - Verifying if source document has complete data');
+      console.warn('[WARNING]    - Adjusting extraction prompts for this document type');
     }
   }
 

@@ -45,17 +45,19 @@ export class TransactionController {
     try {
       console.log('[PARSE] Starting PDF parsing...');
       // Step 1: Parse PDF (with caching)
-      const extractedTransactions = await this.pdfParserService.parsePdf(
+      const { transactions: extractedTransactions, totalPages } = await this.pdfParserService.parsePdf(
         file.buffer,
         file.originalname
       );
       console.log('[SUCCESS] Extraction complete. Found:', extractedTransactions.length, 'transactions');
+      console.log('[SUCCESS] PDF has', totalPages, 'pages');
 
       if (extractedTransactions.length === 0) {
         return {
           success: true,
           message: 'No transactions found in the PDF',
           data: [],
+          totalPages,
         };
       }
 
@@ -96,6 +98,7 @@ export class TransactionController {
           data: [],
           totalExtracted: extractedTransactions.length,
           totalFiltered: 0,
+          totalPages,
         };
       }
 
@@ -104,6 +107,9 @@ export class TransactionController {
         filteredTransactions as NewTransaction[]
       );
 
+      // Data quality metrics
+      const dataQuality = this.calculateDataQuality(extractedTransactions);
+
       return {
         success: true,
         message: `Successfully processed ${insertedTransactions.length} transactions`,
@@ -111,6 +117,8 @@ export class TransactionController {
         totalExtracted: extractedTransactions.length,
         totalFiltered: filteredTransactions.length,
         totalInserted: insertedTransactions.length,
+        totalPages,
+        dataQuality, // Include quality metrics in response
       };
     } catch (error) {
       throw new BadRequestException(`Failed to process PDF: ${error.message}`);
@@ -145,5 +153,54 @@ export class TransactionController {
     } catch (error) {
       throw new BadRequestException(`Failed to search transactions: ${error.message}`);
     }
+  }
+
+  private calculateDataQuality(transactions: any[]): any {
+    if (transactions.length === 0) {
+      return { quality: 'unknown', completeness: 0 };
+    }
+
+    const total = transactions.length;
+    const missingSeller = transactions.filter(t => !t.sellerName || t.sellerName === 'Unknown').length;
+    const missingValue = transactions.filter(t => !t.transactionValue).length;
+    const missingLocation = transactions.filter(t => !t.district || !t.village).length;
+    
+    const completeRecords = total - Math.max(missingSeller, missingValue, missingLocation);
+    const completeness = Math.round((completeRecords / total) * 100);
+
+    let quality = 'excellent';
+    let warnings: string[] = [];
+
+    if (missingSeller > total * 0.5) {
+      quality = 'poor';
+      warnings.push(`${Math.round((missingSeller/total)*100)}% missing seller names`);
+    } else if (missingSeller > total * 0.2) {
+      quality = 'fair';
+      warnings.push(`${Math.round((missingSeller/total)*100)}% missing seller names`);
+    }
+
+    if (missingValue > total * 0.1) {
+      quality = quality === 'excellent' ? 'good' : quality;
+      warnings.push(`${Math.round((missingValue/total)*100)}% missing transaction values`);
+    }
+
+    if (missingLocation > total * 0.1) {
+      quality = quality === 'excellent' ? 'good' : quality;
+      warnings.push(`${Math.round((missingLocation/total)*100)}% missing location data`);
+    }
+
+    return {
+      quality,
+      completeness,
+      total,
+      complete: completeRecords,
+      incomplete: total - completeRecords,
+      warnings: warnings.length > 0 ? warnings : undefined,
+      details: {
+        missingSeller,
+        missingValue,
+        missingLocation,
+      }
+    };
   }
 }
