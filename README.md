@@ -463,31 +463,61 @@ NirnAI/
 
 ## 🗄️ Database Schema
 
+**Managed by Drizzle ORM** - Schema defined in [backend/src/database/schema.ts](backend/src/database/schema.ts)
+
 ```sql
 CREATE TABLE transactions (
   id SERIAL PRIMARY KEY,
-  buyer_name TEXT,
+  buyer_name TEXT NOT NULL,
   buyer_name_tamil TEXT,
-  seller_name TEXT,
+  seller_name TEXT NOT NULL,
   seller_name_tamil TEXT,
   house_number TEXT,
-  survey_number TEXT,
-  document_number TEXT,
+  survey_number TEXT NOT NULL,
+  document_number TEXT NOT NULL,
   transaction_date TEXT,
   transaction_value NUMERIC,
   district TEXT,
   village TEXT,
   additional_info TEXT,
   pdf_file_name TEXT,
-  extracted_at TIMESTAMP,
+  extracted_at TIMESTAMP DEFAULT NOW(),
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Indexes for fast search
-CREATE INDEX idx_buyer ON transactions(buyer_name);
-CREATE INDEX idx_seller ON transactions(seller_name);
-CREATE INDEX idx_survey ON transactions(survey_number);
-CREATE INDEX idx_document ON transactions(document_number);
+-- Indexes for fast search (automatically created by Drizzle)
+CREATE INDEX buyer_name_idx ON transactions(buyer_name);
+CREATE INDEX seller_name_idx ON transactions(seller_name);
+CREATE INDEX house_number_idx ON transactions(house_number);
+CREATE INDEX survey_number_idx ON transactions(survey_number);
+CREATE INDEX document_number_idx ON transactions(document_number);
+```
+
+### Drizzle ORM Commands
+
+**Docker:**
+```bash
+make db-generate    # Generate new migration from schema changes
+make db-init        # Run migrations (apply to database)
+make db-studio      # Open Drizzle Studio GUI
+make db-push        # Push schema directly (skip migration files)
+```
+
+**Manual (No Docker):**
+```bash
+make db-generate-manual  # Generate migration
+make db-migrate-manual   # Run migrations
+make db-studio-manual    # Open Drizzle Studio
+make db-push-manual      # Push schema directly
+```
+
+**Or directly with npm:**
+```bash
+cd backend
+npm run db:generate  # Generate migration from schema.ts
+npm run db:migrate   # Apply migrations
+npm run db:studio    # Open Drizzle Studio (GUI)
+npm run db:push      # Push schema without migration
 ```
 
 ---

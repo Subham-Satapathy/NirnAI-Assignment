@@ -105,10 +105,24 @@ logs-frontend: ## Show frontend logs
 logs-db: ## Show database logs
 	@docker-compose logs -f postgres
 
-db-init: ## Initialize database manually
-	@echo "$(YELLOW)[DATABASE] Initializing database...$(NC)"
+db-init: ## Initialize database manually (run Drizzle migrations)
+	@echo "$(YELLOW)[DATABASE] Running Drizzle migrations...$(NC)"
 	@docker-compose exec -T backend npm run db:migrate
-	@echo "$(GREEN)[SUCCESS] Database initialized!$(NC)"
+	@echo "$(GREEN)[SUCCESS] Database migrated!$(NC)"
+
+db-generate: ## Generate new Drizzle migration from schema changes
+	@echo "$(YELLOW)[DRIZZLE] Generating migration from schema...$(NC)"
+	@docker-compose exec -T backend npm run db:generate
+	@echo "$(GREEN)[SUCCESS] Migration generated!$(NC)"
+
+db-studio: ## Open Drizzle Studio (database GUI)
+	@echo "$(CYAN)[DRIZZLE] Opening Drizzle Studio...$(NC)"
+	@docker-compose exec backend npm run db:studio
+
+db-push: ## Push schema changes directly to database (no migration)
+	@echo "$(YELLOW)[DRIZZLE] Pushing schema to database...$(NC)"
+	@docker-compose exec -T backend npm run db:push
+	@echo "$(GREEN)[SUCCESS] Schema pushed!$(NC)"
 
 db-reset: ## Reset database (WARNING: deletes all data)
 	@echo "$(RED)[WARNING] This will delete all data!$(NC)"
@@ -177,7 +191,21 @@ db-setup-manual: ## [manual] Setup PostgreSQL database manually
 	@echo "$(GREEN)[SUCCESS] Database configured!$(NC)"
 
 db-migrate-manual: ## [manual] Run database migrations
-	@echo "$(YELLOW)[DATABASE] Running migrations...$(NC)"
+	@echo "$(YELLOW)[DATABASE] Running Drizzle migrations...$(NC)"
 	@cd backend && npm run db:migrate
 	@echo "$(GREEN)[SUCCESS] Database migrated!$(NC)"
+
+db-generate-manual: ## [manual] Generate new Drizzle migration
+	@echo "$(YELLOW)[DRIZZLE] Generating migration from schema...$(NC)"
+	@cd backend && npm run db:generate
+	@echo "$(GREEN)[SUCCESS] Migration generated!$(NC)"
+
+db-studio-manual: ## [manual] Open Drizzle Studio
+	@echo "$(CYAN)[DRIZZLE] Opening Drizzle Studio...$(NC)"
+	@cd backend && npm run db:studio
+
+db-push-manual: ## [manual] Push schema directly (skip migration)
+	@echo "$(YELLOW)[DRIZZLE] Pushing schema to database...$(NC)"
+	@cd backend && npm run db:push
+	@echo "$(GREEN)[SUCCESS] Schema pushed!$(NC)"
 
