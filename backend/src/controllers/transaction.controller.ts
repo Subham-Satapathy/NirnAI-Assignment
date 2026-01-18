@@ -78,12 +78,24 @@ export class TransactionController {
       // Step 2: Translate Tamil fields to English
       const translatedTransactions = await Promise.all(
         extractedTransactions.map(async (transaction) => {
+          // Helper function to check and translate Tamil text
+          const translateIfNeeded = async (text: string | undefined): Promise<string> => {
+            if (!text) return '';
+            // Check if text contains Tamil characters
+            if (/[\u0B80-\u0BFF]/.test(text)) {
+              return await this.translationService.translateToEnglish(text);
+            }
+            return text;
+          };
+
           const translatedData: any = {
             ...transaction,
-            buyerName: transaction.buyerName || 
+            buyerName: await translateIfNeeded(transaction.buyerName) || 
               (transaction.buyerNameTamil ? await this.translationService.translateToEnglish(transaction.buyerNameTamil) : 'Unknown'),
-            sellerName: transaction.sellerName || 
+            sellerName: await translateIfNeeded(transaction.sellerName) || 
               (transaction.sellerNameTamil ? await this.translationService.translateToEnglish(transaction.sellerNameTamil) : 'Unknown'),
+            district: await translateIfNeeded(transaction.district),
+            village: await translateIfNeeded(transaction.village),
             pdfFileName: file.originalname,
           };
           return translatedData;

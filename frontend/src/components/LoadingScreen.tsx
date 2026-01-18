@@ -18,7 +18,7 @@ export default function LoadingScreen({
   currentStep = 'parsing'
 }: LoadingScreenProps) {
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 bg-opacity-95 backdrop-blur-sm flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 border border-gray-100">
         <div className="text-center">
           {/* Animated Icon */}

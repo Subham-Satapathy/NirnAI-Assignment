@@ -91,30 +91,21 @@ export class OpenAIExtractionService {
     console.log(`[CHUNKS] Split document into ${chunks.length} chunks`);
     onProgress?.('extracting', 40, `Processing ${chunks.length} chunks...`);
     
-    // Aggressive batch sizing for faster processing
+    // Maximum parallel processing with limit of 10 chunks at once
+    const MAX_PARALLEL = 10;
     let batchSize: number;
     let delayBetweenBatches: number;
     
-    if (chunks.length <= 3) {
-      // Small document: process all chunks in parallel
+    if (chunks.length <= MAX_PARALLEL) {
+      // Process all chunks in parallel if under limit
       batchSize = chunks.length;
-      delayBetweenBatches = 200;
-      console.log(`[BATCH] Small document: processing ${batchSize} chunks in parallel`);
-    } else if (chunks.length <= 8) {
-      // Medium document: aggressive parallelism
-      batchSize = 4;
-      delayBetweenBatches = 500;
-      console.log(`[BATCH] Medium document: batch size ${batchSize}, ${delayBetweenBatches}ms delay`);
-    } else if (chunks.length <= 15) {
-      // Large document: moderate parallelism
-      batchSize = 3;
-      delayBetweenBatches = 800;
-      console.log(`[BATCH] Large document: batch size ${batchSize}, ${delayBetweenBatches}ms delay`);
+      delayBetweenBatches = 300;
+      console.log(`[BATCH] Processing all ${batchSize} chunks in parallel`);
     } else {
-      // Very large document: still parallel but smaller batches
-      batchSize = 2;
-      delayBetweenBatches = 1000;
-      console.log(`[BATCH] Very large document (${chunks.length} chunks): batch size ${batchSize}, ${delayBetweenBatches}ms delay`);
+      // Large document: process 10 chunks at a time
+      batchSize = MAX_PARALLEL;
+      delayBetweenBatches = 500;
+      console.log(`[BATCH] Processing ${batchSize} chunks at a time (${chunks.length} total chunks)`);
     }
     
     const allTransactions: ExtractedTransaction[] = [];
@@ -222,23 +213,24 @@ export class OpenAIExtractionService {
     // Enhanced prompt for better seller extraction and Tamil document handling
     const prompt = `Extract Tamil Nadu property sale deed transactions as JSON array.
 
-IMPORTANT - Field Identification:
+CRITICAL INSTRUCTIONS:
 - BUYER/PURCHASER: வாங்குபவர் / Purchaser / Buyer / Second Party
 - SELLER/VENDOR: விற்பவர் / Vendor / Seller / First Party  
-- If uncertain, check document flow: Seller → Buyer (property transfer direction)
+- ALWAYS transliterate Tamil names to ENGLISH (e.g., கோமேஷ் → Komesh, விஜயா → Vijaya)
+- Use buyerName and sellerName fields for English transliterations
+- Property transfer: Seller → Buyer
 
 Required: surveyNumber, documentNumber
-Optional: buyerName, buyerNameTamil, sellerName, sellerNameTamil, houseNumber, transactionDate (DD/MM/YYYY), transactionValue (numbers only), district, village, additionalInfo
+Optional: buyerName, sellerName, houseNumber, transactionDate (DD/MM/YYYY), transactionValue (numbers only), district, village
 
 Rules:
-1. ALWAYS try to identify BOTH seller and buyer names
-2. Look for Tamil labels: விற்பவர் (seller), வாங்குபவர் (buyer)
-3. Extract seller name even if not explicitly labeled
-4. Transliterate Tamil names to English
-5. If value/district/village missing, still extract other fields
-6. Return valid JSON only
+1. TRANSLITERATE all Tamil text to English
+2. ALWAYS extract BOTH buyer and seller names
+3. If you see Tamil text, convert to English (கோமேஷ் → Komesh)
+4. Use common Tamil name transliterations
+5. Return valid JSON only, no markdown
 
-Example: [{"surveyNumber":"329","documentNumber":"200/2013","buyerName":"Nithya","sellerName":"Murugan","transactionValue":"314068","district":"Thiruvennainallur"}]
+Example: [{"surveyNumber":"329","documentNumber":"200/2014","buyerName":"Komesh","sellerName":"Chelluvamuthu","transactionValue":"300593","district":"Thiruvennainallur"}]
 
 Text:
 ${pdfText}
@@ -251,7 +243,7 @@ JSON:`;
         messages: [
           {
             role: 'system',
-            content: 'You are an expert at extracting structured data from Tamil Nadu property sale deed documents. You understand both Tamil and English text. CRITICAL: Always identify BOTH buyer (வாங்குபவர்) and seller (விற்பவர்) names. Return only valid JSON array, no markdown.',
+            content: 'You are an expert at extracting structured data from Tamil Nadu property documents. CRITICAL: Always transliterate Tamil names to English using proper Tamil transliteration rules. NEVER output Tamil script in the JSON. Always identify BOTH buyer (வாங்குபவர்) and seller (விற்பவர்) names. Return only valid JSON array.',
           },
           {
             role: 'user',
