@@ -7,11 +7,15 @@ import {
   Get,
   Query,
   BadRequestException,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Observable, interval, map, takeWhile } from 'rxjs';
 import { PdfParserService } from '../services/pdf-parser.service';
 import { TranslationService } from '../services/translation.service';
 import { TransactionService } from '../services/transaction.service';
+import { ProgressTrackerService } from '../services/progress-tracker.service';
 import { UploadPdfDto } from '../dto/transaction.dto';
 import { NewTransaction } from '../database/schema';
 
@@ -21,6 +25,7 @@ export class TransactionController {
     private readonly pdfParserService: PdfParserService,
     private readonly translationService: TranslationService,
     private readonly transactionService: TransactionService,
+    private readonly progressTracker: ProgressTrackerService,
   ) {}
 
   @Post('upload')
@@ -42,12 +47,21 @@ export class TransactionController {
       throw new BadRequestException('Only PDF files are allowed');
     }
 
+    // Generate session ID for progress tracking
+    const sessionId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
     try {
       console.log('[PARSE] Starting PDF parsing...');
-      // Step 1: Parse PDF (with caching)
+      console.log('[PROGRESS] Session ID:', sessionId);
+      
+      // Step 1: Parse PDF (with caching and progress tracking)
       const { transactions: extractedTransactions, totalPages } = await this.pdfParserService.parsePdf(
         file.buffer,
-        file.originalname
+        file.originalname,
+        (step, progress, message) => {
+          this.progressTracker.setProgress(sessionId, step, progress, message);
+          console.log(`[PROGRESS] ${step}: ${progress}% - ${message}`);
+        }
       );
       console.log('[SUCCESS] Extraction complete. Found:', extractedTransactions.length, 'transactions');
       console.log('[SUCCESS] PDF has', totalPages, 'pages');
@@ -110,6 +124,9 @@ export class TransactionController {
       // Data quality metrics
       const dataQuality = this.calculateDataQuality(extractedTransactions);
 
+      // Clear progress after completion
+      this.progressTracker.clearProgress(sessionId);
+
       return {
         success: true,
         message: `Successfully processed ${insertedTransactions.length} transactions`,
@@ -119,10 +136,27 @@ export class TransactionController {
         totalInserted: insertedTransactions.length,
         totalPages,
         dataQuality, // Include quality metrics in response
+        sessionId, // Return session ID for progress tracking
       };
     } catch (error) {
       throw new BadRequestException(`Failed to process PDF: ${error.message}`);
     }
+  }
+
+  @Sse('progress/:sessionId')
+  streamProgress(@Query('sessionId') sessionId: string): Observable<MessageEvent> {
+    return interval(200).pipe(
+      map(() => {
+        const progress = this.progressTracker.getProgress(sessionId);
+        return {
+          data: progress || { step: 'waiting', progress: 0, message: 'Initializing...' },
+        };
+      }),
+      takeWhile((event) => {
+        const data: any = event.data;
+        return data.progress < 100 || data.step !== 'complete';
+      }, true),
+    );
   }
 
   @Get()

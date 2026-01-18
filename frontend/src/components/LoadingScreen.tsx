@@ -7,9 +7,16 @@ interface LoadingScreenProps {
   progress?: number;
   totalPages?: number;
   currentPage?: number;
+  currentStep?: string;
 }
 
-export default function LoadingScreen({ message = 'Extracting transactions...', progress, totalPages, currentPage }: LoadingScreenProps) {
+export default function LoadingScreen({ 
+  message = 'Extracting transactions...', 
+  progress = 0, 
+  totalPages, 
+  currentPage,
+  currentStep = 'parsing'
+}: LoadingScreenProps) {
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 bg-opacity-95 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 border border-gray-100">
@@ -102,6 +109,8 @@ export default function LoadingScreen({ message = 'Extracting transactions...', 
                 </svg>
               }
               text="Reading PDF document" 
+              active={currentStep === 'parsing'}
+              completed={progress > 20}
             />
             <LoadingStep 
               icon={
@@ -110,6 +119,8 @@ export default function LoadingScreen({ message = 'Extracting transactions...', 
                 </svg>
               }
               text="AI analyzing content" 
+              active={currentStep === 'analyzing'}
+              completed={progress > 40}
             />
             <LoadingStep 
               icon={
@@ -118,6 +129,8 @@ export default function LoadingScreen({ message = 'Extracting transactions...', 
                 </svg>
               }
               text="Extracting transactions" 
+              active={currentStep === 'extracting'}
+              completed={progress > 70}
             />
             <LoadingStep 
               icon={
@@ -126,6 +139,8 @@ export default function LoadingScreen({ message = 'Extracting transactions...', 
                 </svg>
               }
               text="Processing results" 
+              active={currentStep === 'processing'}
+              completed={progress >= 100}
             />
           </div>
 
@@ -146,19 +161,46 @@ export default function LoadingScreen({ message = 'Extracting transactions...', 
   );
 }
 
-function LoadingStep({ icon, text }: { icon: React.ReactNode; text: string }) {
+function LoadingStep({ 
+  icon, 
+  text, 
+  active = false, 
+  completed = false 
+}: { 
+  icon: React.ReactNode; 
+  text: string;
+  active?: boolean;
+  completed?: boolean;
+}) {
   return (
-    <div className="flex items-center space-x-3 text-sm text-gray-700">
-      <div className="flex-shrink-0 text-blue-600 animate-pulse">
-        {icon}
+    <div className={`flex items-center space-x-3 text-sm transition-all duration-300 ${
+      completed ? 'text-green-600' : active ? 'text-blue-600' : 'text-gray-400'
+    }`}>
+      <div className={`flex-shrink-0 ${
+        completed ? 'text-green-600' : active ? 'text-blue-600 animate-pulse' : 'text-gray-400'
+      }`}>
+        {completed ? (
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ) : (
+          icon
+        )}
       </div>
       <span className="font-medium">{text}</span>
       <div className="flex-1 flex items-center justify-end">
-        <div className="flex space-x-1">
-          <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-          <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-          <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-        </div>
+        {active && !completed && (
+          <div className="flex space-x-1">
+            <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+        )}
+        {completed && (
+          <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        )}
       </div>
     </div>
   );

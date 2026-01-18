@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
-import { ExtractedTransaction } from './pdf-parser.service';
+import { ExtractedTransaction, ProgressCallback } from './pdf-parser.service';
 
 interface ChunkResult {
   chunkIndex: number;
@@ -20,29 +20,49 @@ export class OpenAIExtractionService {
     }
   }
 
-  async extractTransactions(pdfText: string): Promise<ExtractedTransaction[]> {
+  async extractTransactions(pdfText: string, onProgress?: ProgressCallback): Promise<ExtractedTransaction[]> {
     if (!this.openai) {
       throw new Error('OpenAI API key not configured. Please set OPENAI_API_KEY in environment variables.');
     }
 
     // Check if document is too large and needs chunking
     const estimatedTokens = Math.ceil(pdfText.length / 2.5); // More accurate: ~2.5 chars per token
-    const maxTokensPerRequest = 15000; // Reduced to avoid rate limits with gpt-4o-mini (30k TPM limit)
+    
+    // Optimized chunk sizing - larger chunks for faster processing
+    // GPT-4o-mini has 128k context, we can be more aggressive
+    let maxTokensPerRequest: number;
+    if (estimatedTokens < 8000) {
+      maxTokensPerRequest = 25000; // Small doc: very large chunks
+    } else if (estimatedTokens < 30000) {
+      maxTokensPerRequest = 20000; // Medium doc: large chunks
+    } else if (estimatedTokens < 80000) {
+      maxTokensPerRequest = 18000; // Large doc: still large chunks
+    } else {
+      maxTokensPerRequest = 15000; // Very large doc: moderate chunks
+    }
+    
+    console.log(`[DOCUMENT] Estimated ${estimatedTokens} tokens, using ${maxTokensPerRequest} tokens per chunk`);
     
     if (estimatedTokens > maxTokensPerRequest) {
       console.log(`[CHUNKING] Document too large (~${estimatedTokens} tokens). Splitting into chunks...`);
-      return this.extractTransactionsInChunks(pdfText, maxTokensPerRequest);
+      return this.extractTransactionsInChunks(pdfText, maxTokensPerRequest, onProgress);
     }
 
-    return this.extractTransactionsFromText(pdfText);
+    onProgress?.('extracting', 50, 'Analyzing document...');
+    const result = await this.extractTransactionsFromText(pdfText);
+    onProgress?.('extracting', 70, `Found ${result.length} transactions`);
+    return result;
   }
 
   private async extractTransactionsInChunks(
     pdfText: string,
-    maxTokensPerRequest: number
+    maxTokensPerRequest: number,
+    onProgress?: ProgressCallback
   ): Promise<ExtractedTransaction[]> {
     const charsPerChunk = maxTokensPerRequest * 2; // 2 chars per token
     const chunks: string[] = [];
+    
+    onProgress?.('analyzing', 35, 'Splitting document into chunks...');
     
     // Split by pages or sections to avoid breaking transactions
     const pageDelimiters = ['\n\n\n', '\f', '---'];
@@ -69,11 +89,37 @@ export class OpenAIExtractionService {
     }
     
     console.log(`[CHUNKS] Split document into ${chunks.length} chunks`);
+    onProgress?.('extracting', 40, `Processing ${chunks.length} chunks...`);
     
-    // Process chunks with controlled parallelism (2 at a time to respect rate limits)
+    // Aggressive batch sizing for faster processing
+    let batchSize: number;
+    let delayBetweenBatches: number;
+    
+    if (chunks.length <= 3) {
+      // Small document: process all chunks in parallel
+      batchSize = chunks.length;
+      delayBetweenBatches = 200;
+      console.log(`[BATCH] Small document: processing ${batchSize} chunks in parallel`);
+    } else if (chunks.length <= 8) {
+      // Medium document: aggressive parallelism
+      batchSize = 4;
+      delayBetweenBatches = 500;
+      console.log(`[BATCH] Medium document: batch size ${batchSize}, ${delayBetweenBatches}ms delay`);
+    } else if (chunks.length <= 15) {
+      // Large document: moderate parallelism
+      batchSize = 3;
+      delayBetweenBatches = 800;
+      console.log(`[BATCH] Large document: batch size ${batchSize}, ${delayBetweenBatches}ms delay`);
+    } else {
+      // Very large document: still parallel but smaller batches
+      batchSize = 2;
+      delayBetweenBatches = 1000;
+      console.log(`[BATCH] Very large document (${chunks.length} chunks): batch size ${batchSize}, ${delayBetweenBatches}ms delay`);
+    }
+    
     const allTransactions: ExtractedTransaction[] = [];
-    const batchSize = 2; // Process 2 chunks in parallel
     let totalTokensUsed = 0;
+    let processedChunks = 0;
     
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
@@ -89,20 +135,27 @@ export class OpenAIExtractionService {
         
         results.forEach((result, batchIdx) => {
           const chunkIndex = i + batchIdx;
+          processedChunks++;
+          
           if (result.status === 'fulfilled') {
             const { transactions, tokensUsed, duration } = result.value;
             allTransactions.push(...transactions);
             totalTokensUsed += tokensUsed;
+            
+            // Calculate progress: 40% (start) + 40% * (chunks processed / total chunks)
+            const chunkProgress = 40 + Math.round(40 * (processedChunks / chunks.length));
+            onProgress?.('extracting', chunkProgress, `Processed chunk ${processedChunks}/${chunks.length} - found ${allTransactions.length} transactions`);
+            
             console.log(`[SUCCESS] Chunk ${chunkIndex + 1} extracted ${transactions.length} transactions in ${duration.toFixed(1)}s (~${tokensUsed} tokens)`);
           } else {
             console.error(`[ERROR] Chunk ${chunkIndex + 1} failed after retries:`, result.reason?.message || result.reason);
           }
         });
         
-        // Delay between batches to respect rate limits
+        // Delay between batches to respect rate limits (adaptive based on document size)
         if (i + batchSize < chunks.length) {
-          console.log(`⏳ Waiting 2 seconds before next batch...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log(`⏳ Waiting ${delayBetweenBatches/1000}s before next batch...`);
+          await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
         }
       } catch (error) {
         console.error(`[ERROR] Batch processing error:`, error.message);

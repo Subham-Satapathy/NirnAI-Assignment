@@ -6,7 +6,7 @@ import { Transaction, TransactionFilters } from '@/types';
 
 interface UploadFormProps {
   onUploadSuccess: (transactions: Transaction[], file: File) => void;
-  onLoadingChange: (loading: boolean, totalPages?: number) => void;
+  onLoadingChange: (loading: boolean, totalPages?: number, progress?: number, step?: string) => void;
 }
 
 export default function UploadForm({ onUploadSuccess, onLoadingChange }: UploadFormProps) {
@@ -44,13 +44,61 @@ export default function UploadForm({ onUploadSuccess, onLoadingChange }: UploadF
     setQualityWarnings([]);
 
     try {
-      const response = await transactionService.uploadPdf(file, filters);
+      // Start with initial progress
+      let currentProgress = 0;
+      let currentStepIndex = 0;
+      const steps = ['parsing', 'analyzing', 'extracting', 'processing'];
+      
+      onLoadingChange(true, undefined, 0, 'parsing');
+      
+      // Start upload
+      const uploadPromise = transactionService.uploadPdf(file, filters);
+      
+      // Smoothly increase progress while waiting (more realistic timing)
+      const progressInterval = setInterval(() => {
+        // Slower, more realistic progress
+        // Progress speeds:
+        // 0-30%: moderate (parsing/analyzing)
+        // 30-70%: slow (extracting - main work)
+        // 70-90%: fast (processing results)
+        let targetProgress = 90;
+        let speed = 0.05; // default slow speed for extraction
+        
+        if (currentProgress < 30) {
+          speed = 0.15; // faster for initial parsing
+        } else if (currentProgress > 70) {
+          speed = 0.25; // faster for final processing
+        }
+        
+        const increment = (targetProgress - currentProgress) * speed;
+        currentProgress = Math.min(targetProgress, currentProgress + Math.max(increment, 0.5));
+        
+        // Update step based on progress
+        if (currentProgress > 25 && currentStepIndex === 0) {
+          currentStepIndex = 1;
+        } else if (currentProgress > 45 && currentStepIndex === 1) {
+          currentStepIndex = 2;
+        } else if (currentProgress > 75 && currentStepIndex === 2) {
+          currentStepIndex = 3;
+        }
+        
+        onLoadingChange(true, undefined, Math.round(currentProgress), steps[currentStepIndex]);
+      }, 400); // Update every 400ms for smoother animation
+      
+      const response = await uploadPromise;
+      clearInterval(progressInterval);
       
       if (response.success) {
         // Update loading with totalPages info
         if (response.totalPages) {
-          onLoadingChange(true, response.totalPages);
+          onLoadingChange(true, response.totalPages, 80, 'processing');
         }
+        
+        // Final progress
+        onLoadingChange(true, response.totalPages, 100, 'complete');
+        
+        // Small delay to show completion
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         setSuccess(response.message);
         

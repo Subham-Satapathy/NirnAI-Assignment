@@ -9,6 +9,8 @@ import { Transaction } from '@/types';
 export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [totalPages, setTotalPages] = useState<number | undefined>(undefined);
+  const [progress, setProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState<string>('parsing');
   const router = useRouter();
 
   useEffect(() => {
@@ -33,18 +35,26 @@ export default function DashboardPage() {
     router.push('/transactions');
   };
 
-  const handleLoadingChange = (isLoading: boolean, pages?: number) => {
+  const handleLoadingChange = (isLoading: boolean, pages?: number, progressValue?: number, step?: string) => {
     setLoading(isLoading);
     if (pages !== undefined) {
       setTotalPages(pages);
-    } else {
+    } else if (!isLoading) {
       setTotalPages(undefined);
+      setProgress(0);
+      setCurrentStep('parsing');
+    }
+    if (progressValue !== undefined) {
+      setProgress(progressValue);
+    }
+    if (step) {
+      setCurrentStep(step);
     }
   };
 
   return (
     <>
-      {loading && <LoadingScreen totalPages={totalPages} />}
+      {loading && <LoadingScreen totalPages={totalPages} progress={progress} currentStep={currentStep} />}
       
       <div className="min-h-screen bg-gray-50">
         {/* Header */}

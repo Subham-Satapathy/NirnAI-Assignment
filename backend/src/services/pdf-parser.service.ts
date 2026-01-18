@@ -18,6 +18,10 @@ export interface ExtractedTransaction {
   additionalInfo?: string;
 }
 
+export interface ProgressCallback {
+  (step: string, progress: number, message: string): void;
+}
+
 @Injectable()
 export class PdfParserService {
   constructor(
@@ -25,38 +29,53 @@ export class PdfParserService {
     private readonly cacheService: CacheService,
   ) {}
 
-  async parsePdf(buffer: Buffer, fileName: string = 'document.pdf'): Promise<{ transactions: ExtractedTransaction[], totalPages: number }> {
+  async parsePdf(
+    buffer: Buffer,
+    fileName: string = 'document.pdf',
+    onProgress?: ProgressCallback
+  ): Promise<{ transactions: ExtractedTransaction[], totalPages: number }> {
     try {
-      // Parse PDF first to get page count
-      console.log('[PDF PARSE] Parsing PDF buffer of size:', buffer.length, 'bytes');
+      // Step 1: Parse PDF (0-20%)
+      onProgress?.('parsing', 10, 'Reading PDF document...');
+      const fileSizeKB = Math.round(buffer.length / 1024);
+      console.log('[PDF PARSE] Parsing PDF buffer of size:', buffer.length, 'bytes', `(${fileSizeKB} KB)`);
       const data = await pdfParse(buffer);
       const text = data.text;
       const totalPages = data.numpages;
       
+      onProgress?.('parsing', 20, `Extracted ${totalPages} pages (${fileSizeKB} KB)`);
       console.log('[PDF] Extracted text length:', text.length, 'characters');
+      console.log('[PDF] Number of pages:', totalPages);
+      console.log('[PDF] File size:', fileSizeKB, 'KB');
       console.log('[PDF] First 500 characters of PDF:', text.substring(0, 500));
       console.log('[PDF] Number of pages:', totalPages);
 
-      // Check cache after parsing (so we always get page count)
+      // Step 2: Check cache (20-30%)
+      onProgress?.('analyzing', 25, 'Checking cache...');
       const fileHash = this.cacheService.generateHash(buffer);
       const cachedResults = await this.cacheService.get(fileHash);
       
       if (cachedResults) {
         console.log('[CACHE] Returning cached results');
+        onProgress?.('complete', 100, 'Loading cached results');
         return { transactions: cachedResults, totalPages };
       }
 
-      // If OpenAI is configured, use it for extraction
+      // Step 3: AI extraction (30-80%)
       if (this.openaiService.isConfigured()) {
+        onProgress?.('analyzing', 35, 'AI analyzing content...');
         console.log('[OPENAI] Using OpenAI GPT-4 to parse document and extract transactions...');
         console.log('[OPENAI] Sending', text.length, 'characters to OpenAI...');
         try {
-          const transactions = await this.openaiService.extractTransactions(text);
+          // Pass progress callback to OpenAI service for real chunk-by-chunk progress
+          const transactions = await this.openaiService.extractTransactions(text, onProgress);
           console.log(`[SUCCESS] OpenAI successfully extracted ${transactions.length} transactions`);
           
+          onProgress?.('processing', 80, 'Processing results...');
           // Cache the results
           await this.cacheService.set(fileHash, transactions, fileName);
           
+          onProgress?.('complete', 100, `Found ${transactions.length} transactions`);
           return { transactions, totalPages };
         } catch (error) {
           console.error('[ERROR] OpenAI extraction failed, falling back to regex:', error.message);
@@ -75,11 +94,14 @@ export class PdfParserService {
         console.log('[WARNING] Falling back to regex extraction (low accuracy)...');
       }
 
-      // Fallback: Parse the PDF text with regex and extract transactions
+      // Step 4: Fallback regex extraction (40-90%)
+      onProgress?.('extracting', 50, 'Extracting transactions...');
       console.log('[REGEX] Starting regex extraction...');
       const transactions = this.extractTransactions(text);
       console.log(`Regex extracted ${transactions.length} transactions`);
       
+      onProgress?.('processing', 90, 'Processing results...');
+      onProgress?.('complete', 100, `Found ${transactions.length} transactions`);
       return { transactions, totalPages };
     } catch (error) {
       throw new Error(`Failed to parse PDF: ${error.message}`);

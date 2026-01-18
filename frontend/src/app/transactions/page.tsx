@@ -9,6 +9,8 @@ export default function TransactionsViewPage() {
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState<{ key: keyof Transaction; direction: 'asc' | 'desc' } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -94,6 +96,17 @@ export default function TransactionsViewPage() {
 
   const filteredTransactions = getSortedAndFilteredTransactions();
 
+  // Pagination
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search term changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -127,6 +140,9 @@ export default function TransactionsViewPage() {
                 </h1>
                 <p className="text-sm text-gray-600">
                   <span className="font-semibold text-blue-600">{filteredTransactions.length}</span> transactions found
+                  {filteredTransactions.length > itemsPerPage && (
+                    <span className="text-gray-400"> • Page {currentPage} of {totalPages}</span>
+                  )}
                 </p>
               </div>
             </div>
@@ -177,6 +193,23 @@ export default function TransactionsViewPage() {
                   </button>
                 )}
               </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <label className="text-sm text-gray-600 whitespace-nowrap">Show:</label>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={filteredTransactions.length}>All</option>
+              </select>
             </div>
           </div>
         </div>
@@ -239,10 +272,10 @@ export default function TransactionsViewPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
-                {filteredTransactions.map((transaction, index) => (
+                {paginatedTransactions.map((transaction, index) => (
                   <tr key={index} className="hover:bg-blue-50 transition-colors duration-150">
                     <td className="px-4 py-4 text-sm text-gray-500 font-semibold border-r border-gray-100 bg-gray-50">
-                      {index + 1}
+                      {startIndex + index + 1}
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-900 whitespace-nowrap font-medium">
                       {transaction.houseNumber || '-'}
@@ -290,6 +323,89 @@ export default function TransactionsViewPage() {
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-1">No transactions found</h3>
               <p className="text-sm text-gray-500">Try adjusting your search criteria or upload a new document</p>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="bg-gray-50 px-4 py-4 border-t border-gray-200 flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <span>Showing</span>
+                <span className="font-semibold text-gray-900">{startIndex + 1}</span>
+                <span>to</span>
+                <span className="font-semibold text-gray-900">{Math.min(endIndex, filteredTransactions.length)}</span>
+                <span>of</span>
+                <span className="font-semibold text-gray-900">{filteredTransactions.length}</span>
+                <span>results</span>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                {/* Previous Button */}
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+
+                {/* Page Numbers */}
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 7) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 4) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 3) {
+                      pageNum = totalPages - 6 + i;
+                    } else {
+                      pageNum = currentPage - 3 + i;
+                    }
+
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white'
+                            : 'text-gray-700 hover:bg-gray-100 border border-gray-300'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Next Button */}
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+
+              {/* Quick Jump */}
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-600">Go to:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={totalPages}
+                  value={currentPage}
+                  onChange={(e) => {
+                    const page = parseInt(e.target.value);
+                    if (page >= 1 && page <= totalPages) {
+                      setCurrentPage(page);
+                    }
+                  }}
+                  className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+              </div>
             </div>
           )}
         </div>

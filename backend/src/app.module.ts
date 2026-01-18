@@ -8,6 +8,7 @@ import { TranslationService } from './services/translation.service';
 import { TransactionService } from './services/transaction.service';
 import { OpenAIExtractionService } from './services/openai-extraction.service';
 import { CacheService } from './services/cache.service';
+import { ProgressTrackerService } from './services/progress-tracker.service';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { CacheService } from './services/cache.service';
     TransactionService,
     OpenAIExtractionService,
     CacheService,
+    ProgressTrackerService,
   ],
 })
 export class AppModule {}
